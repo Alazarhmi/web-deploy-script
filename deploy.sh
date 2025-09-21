@@ -79,15 +79,117 @@ handle_error() {
     exit $exit_code
 }
 
+# Input validation functions
+validate_subdomain() {
+    local subdomain=$1
+    
+    # Check if empty
+    if [[ -z "$subdomain" ]]; then
+        fail "❌ Subdomain cannot be empty. Please enter a valid subdomain like 'myapp.example.com'" 2
+    fi
+    
+    # Check basic format (letters, numbers, dots, hyphens only)
+    if [[ ! "$subdomain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
+        fail "❌ Invalid subdomain format. Use only letters, numbers, dots, and hyphens. Example: 'myapp.example.com'" 2
+    fi
+    
+    # Check length (not too long)
+    if [[ ${#subdomain} -gt 253 ]]; then
+        fail "❌ Subdomain is too long. Maximum 253 characters allowed." 2
+    fi
+    
+    # Check if it starts or ends with dot or hyphen
+    if [[ "$subdomain" =~ ^[.-] ]] || [[ "$subdomain" =~ [.-]$ ]]; then
+        fail "❌ Subdomain cannot start or end with dot or hyphen. Example: 'myapp.example.com'" 2
+    fi
+    
+    # Check for consecutive dots
+    if [[ "$subdomain" =~ \.\. ]]; then
+        fail "❌ Subdomain cannot have consecutive dots. Example: 'myapp.example.com'" 2
+    fi
+    
+    # Check if subdomain is already configured
+    local safe_name=$(echo "$subdomain" | tr '/' '_')
+    if [[ -f "/etc/nginx/sites-available/${safe_name}.conf" ]]; then
+        warn "⚠️  Subdomain '$subdomain' is already configured"
+        read -p "Do you want to update the existing configuration? (y/n): " UPDATE
+        if [[ ! "$UPDATE" =~ ^[Yy] ]]; then
+            fail "❌ Deployment cancelled. Choose a different subdomain" 2
+        fi
+    fi
+    
+    info "✅ Subdomain format is valid"
+}
+
+validate_repo_url() {
+    local repo_url=$1
+    
+    # Check if empty
+    if [[ -z "$repo_url" ]]; then
+        fail "❌ Repository URL cannot be empty" 2
+    fi
+    
+    # Check if it's a valid URL format
+    if [[ ! "$repo_url" =~ ^https?:// ]]; then
+        fail "❌ Invalid repository URL. Must start with http:// or https://" 2
+    fi
+    
+    # Check if it ends with .git or looks like a git repository
+    if [[ ! "$repo_url" =~ \.git$ ]] && [[ ! "$repo_url" =~ github\.com ]] && [[ ! "$repo_url" =~ gitlab\.com ]] && [[ ! "$repo_url" =~ bitbucket\.org ]]; then
+        warn "⚠️  URL doesn't look like a git repository. Make sure it's correct."
+        read -p "Continue anyway? (y/n): " CONTINUE
+        if [[ ! "$CONTINUE" =~ ^[Yy] ]]; then
+            fail "❌ Please enter a valid git repository URL" 2
+        fi
+    fi
+    
+    info "✅ Repository URL format is valid"
+}
+
+validate_email() {
+    local email=$1
+    
+    # Check if empty (email is optional for Let's Encrypt)
+    if [[ -z "$email" ]]; then
+        return 0
+    fi
+    
+    # Basic email format validation
+    if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        fail "❌ Invalid email format. Example: 'user@example.com'" 2
+    fi
+    
+    info "✅ Email format is valid"
+}
+
+validate_git_credentials() {
+    local git_user=$1
+    local git_pat=$2
+    
+    # Check if PAT is empty
+    if [[ -z "$git_pat" ]]; then
+        fail "❌ Personal Access Token cannot be empty for private repositories" 2
+    fi
+    
+    # Check PAT length (most PATs are at least 20 characters)
+    if [[ ${#git_pat} -lt 10 ]]; then
+        warn "⚠️  Personal Access Token seems too short. Most PATs are 20+ characters."
+        read -p "Continue anyway? (y/n): " CONTINUE
+        if [[ ! "$CONTINUE" =~ ^[Yy] ]]; then
+            fail "❌ Please enter a valid Personal Access Token" 2
+        fi
+    fi
+    
+    info "✅ Git credentials format is valid"
+}
+
 # Ensure running as root (we need to write /etc/nginx and /var/www)
 if [[ "$EUID" -ne 0 ]]; then
   fail "Please run this script with sudo or as root."
 fi
 
-read -rp "Enter project subdomain (e.g. project.yourdomain.com): " SUBDOMAIN
-if [[ -z "$SUBDOMAIN" ]]; then
-  fail "Subdomain cannot be empty."
-fi
+read -rp "Enter project subdomain (e.g. myapp.example.com): " SUBDOMAIN
+validate_subdomain "$SUBDOMAIN"
 
 # sanitize subdomain for filenames
 SAFE_NAME=$(echo "$SUBDOMAIN" | tr '/' '_' )
@@ -122,19 +224,28 @@ done
 # Ask about Git repo
 read -rp "Does the project repository exist remotely? (y/n): " REPO_EXISTS
 REPO_EXISTS=${REPO_EXISTS,,} # to lower
+
+# Validate yes/no input
+if [[ "$REPO_EXISTS" != "y" && "$REPO_EXISTS" != "yes" && "$REPO_EXISTS" != "n" && "$REPO_EXISTS" != "no" ]]; then
+  fail "❌ Invalid input. Please enter 'y' for yes or 'n' for no" 2
+fi
 if [[ "$REPO_EXISTS" = "y" || "$REPO_EXISTS" = "yes" ]]; then
   read -rp "Is the repository public or private? (public/private): " REPO_TYPE
   REPO_TYPE=${REPO_TYPE,,}
+  
+  # Validate repository type
+  if [[ "$REPO_TYPE" != "public" && "$REPO_TYPE" != "private" ]]; then
+    fail "❌ Invalid repository type. Please enter 'public' or 'private'" 2
+  fi
   read -rp "Enter the Git repository HTTPS URL (e.g. https://github.com/owner/repo.git): " REPO_URL
+  validate_repo_url "$REPO_URL"
 
   if [[ "$REPO_TYPE" = "private" ]]; then
     # Ask for PAT and optionally username
     read -rp "Enter git username for PAT (e.g. GitHub username) [press Enter to skip]: " GIT_USER
     read -rsp "Enter Personal Access Token (PAT) (input is hidden): " GIT_PAT
     echo
-    if [[ -z "$GIT_PAT" ]]; then
-      fail "PAT empty; cannot clone private repository."
-    fi
+    validate_git_credentials "$GIT_USER" "$GIT_PAT"
 
     # Extract host from URL for .netrc (handles https://host/... or https://user@host/...)
     host=$(echo "$REPO_URL" | sed -E 's#https?://([^/]+)/.*#\1#' )
@@ -252,6 +363,11 @@ fi
 read -rp "Do you want to enable HTTPS with Let's Encrypt for ${SUBDOMAIN}? (y/n): " ENABLE_HTTPS
 ENABLE_HTTPS=${ENABLE_HTTPS,,}
 
+# Validate yes/no input for HTTPS
+if [[ "$ENABLE_HTTPS" != "y" && "$ENABLE_HTTPS" != "yes" && "$ENABLE_HTTPS" != "n" && "$ENABLE_HTTPS" != "no" ]]; then
+  fail "❌ Invalid input. Please enter 'y' for yes or 'n' for no" 2
+fi
+
 CERTBOT_INSTALLED=false
 if [[ "$ENABLE_HTTPS" = "y" || "$ENABLE_HTTPS" = "yes" ]]; then
   info "Preparing to install certbot (if needed) and request a certificate."
@@ -289,7 +405,8 @@ if [[ "$ENABLE_HTTPS" = "y" || "$ENABLE_HTTPS" = "yes" ]]; then
     warn "Could not install certbot automatically. Please install certbot and re-run certbot --nginx -d ${SUBDOMAIN}"
   else
     # ask for email
-    read -rp "Enter email for Let's Encrypt registration (for renewal notices) : " LE_EMAIL
+    read -rp "Enter email for Let's Encrypt registration (for renewal notices): " LE_EMAIL
+    validate_email "$LE_EMAIL"
     if [[ -z "$LE_EMAIL" ]]; then
       warn "Empty email — certbot will be run without --email (not recommended)."
       CERTBOT_EMAIL_ARG="--register-unsafely-without-email"
