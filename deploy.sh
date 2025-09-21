@@ -12,11 +12,72 @@ IFS=$'\n\t'
 # - verify via curl
 # -------------------------
 
-trap 'echo "An error occurred. Check previous output." >&2' ERR
+# Enhanced error handling with specific guidance
+trap 'handle_error $? $LINENO' ERR
 
+# Color-coded output functions
 warn() { echo -e "\e[33m[WARN]\e[0m $*"; }
 info() { echo -e "\e[32m[INFO]\e[0m $*"; }
 fail() { echo -e "\e[31m[ERROR]\e[0m $*"; exit 1; }
+success() { echo -e "\e[32m[SUCCESS]\e[0m $*"; }
+
+# Comprehensive error handling function
+handle_error() {
+    local exit_code=$1
+    local line_number=$2
+    echo
+    echo "❌ ==================== ERROR OCCURRED ===================="
+    echo "Error at line $line_number (exit code: $exit_code)"
+    echo
+    
+    # Provide specific guidance based on common error scenarios
+    case $exit_code in
+        1) 
+            echo "💡 Common fixes:"
+            echo "   - Check if you have internet connection"
+            echo "   - Verify the repository URL is correct"
+            echo "   - Make sure you have proper permissions"
+            ;;
+        2) 
+            echo "💡 Common fixes:"
+            echo "   - Verify the subdomain format is correct"
+            echo "   - Check if the subdomain is already in use"
+            echo "   - Ensure DNS is pointing to this server"
+            ;;
+        3) 
+            echo "💡 Common fixes:"
+            echo "   - Check if nginx is already running on port 80/443"
+            echo "   - Verify nginx configuration is valid"
+            echo "   - Restart nginx: sudo systemctl restart nginx"
+            ;;
+        4) 
+            echo "💡 Common fixes:"
+            echo "   - Check if certbot is properly installed"
+            echo "   - Verify domain DNS is pointing to this server"
+            echo "   - Try running: sudo certbot --nginx -d $SUBDOMAIN"
+            ;;
+        5) 
+            echo "💡 Common fixes:"
+            echo "   - Check if the project directory exists and is writable"
+            echo "   - Verify file permissions: sudo chown -R www-data:www-data $PROJECT_DIR"
+            ;;
+        *) 
+            echo "💡 Common fixes:"
+            echo "   - Check the error message above"
+            echo "   - Verify all inputs are correct"
+            echo "   - Check system logs: journalctl -xe"
+            ;;
+    esac
+    
+    echo
+    echo "📋 Next steps:"
+    echo "   1. Fix the issue mentioned above"
+    echo "   2. Run the script again"
+    echo "   3. If problem persists, check nginx logs: /var/log/nginx/error.log"
+    echo "==============================================================="
+    echo
+    exit $exit_code
+}
 
 # Ensure running as root (we need to write /etc/nginx and /var/www)
 if [[ "$EUID" -ne 0 ]]; then
@@ -102,7 +163,9 @@ if [[ "$REPO_EXISTS" = "y" || "$REPO_EXISTS" = "yes" ]]; then
       info "Repository cloned successfully."
     else
       warn "Initial git clone attempt failed; trying with explicit HOME..."
-      HOME="$HOME_TEMP" git clone "$REPO_URL" "$PROJECT_DIR" --depth=1
+      if ! HOME="$HOME_TEMP" git clone "$REPO_URL" "$PROJECT_DIR" --depth=1; then
+        fail "Failed to clone private repository. Check your credentials and repository URL." 1
+      fi
     fi
 
     # cleanup
@@ -111,7 +174,9 @@ if [[ "$REPO_EXISTS" = "y" || "$REPO_EXISTS" = "yes" ]]; then
   else
     # public repo
     info "Cloning public repo into $PROJECT_DIR..."
-    git clone "$REPO_URL" "$PROJECT_DIR" --depth=1
+    if ! git clone "$REPO_URL" "$PROJECT_DIR" --depth=1; then
+      fail "Failed to clone public repository. Check the repository URL and internet connection." 1
+    fi
   fi
 
   # Set ownership and permissions
@@ -174,10 +239,14 @@ if [[ ! -L "${NGINX_SITES_ENABLED}/${SAFE_NAME}.conf" ]]; then
 fi
 
 info "Testing Nginx configuration..."
-nginx -t
+if ! nginx -t; then
+  fail "Nginx configuration test failed. Check the configuration syntax." 3
+fi
 
 info "Reloading Nginx..."
-systemctl reload nginx
+if ! systemctl reload nginx; then
+  fail "Failed to reload Nginx. Check nginx status: systemctl status nginx" 3
+fi
 
 # Ask about enabling HTTPS
 read -rp "Do you want to enable HTTPS with Let's Encrypt for ${SUBDOMAIN}? (y/n): " ENABLE_HTTPS
@@ -234,6 +303,7 @@ if [[ "$ENABLE_HTTPS" = "y" || "$ENABLE_HTTPS" = "yes" ]]; then
       info "Certificate obtained and installed successfully."
     else
       warn "certbot failed. You may need to run: certbot --nginx -d ${SUBDOMAIN} and investigate errors."
+      # Don't fail here, just warn - HTTPS is optional
     fi
   fi
 fi
