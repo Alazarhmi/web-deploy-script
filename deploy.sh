@@ -183,11 +183,64 @@ validate_git_credentials() {
     info "✅ Git credentials format is valid"
 }
 
+# Progress feedback functions
+show_progress() {
+    local pid=$1
+    local message=$2
+    local delay=0.1
+    local spinstr='|/-\'
+    local temp
+    
+    echo -n "$message "
+    while [ "$(ps a | awk '{print $1}' | grep $pid)" ]; do
+        temp=${spinstr#?}
+        printf " [%c]  " "$spinstr"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+    echo "✅"
+}
+
+run_with_progress() {
+    local command="$1"
+    local message="$2"
+    
+    echo -n "$message "
+    if eval "$command" > /dev/null 2>&1; then
+        echo "✅"
+        return 0
+    else
+        echo "❌"
+        return 1
+    fi
+}
+
+show_step() {
+    local step_number=$1
+    local total_steps=$2
+    local message=$3
+    
+    echo
+    echo "🔄 Step $step_number/$total_steps: $message"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
 # Ensure running as root (we need to write /etc/nginx and /var/www)
 if [[ "$EUID" -ne 0 ]]; then
   fail "Please run this script with sudo or as root."
 fi
 
+# Initialize step counter
+CURRENT_STEP=0
+TOTAL_STEPS=8
+
+echo "🚀 ==================== VPS DEPLOYMENT SCRIPT ===================="
+echo "This script will help you deploy your web project quickly and easily."
+echo "=================================================================="
+
+show_step 1 $TOTAL_STEPS "Gathering project information"
 read -rp "Enter project subdomain (e.g. myapp.example.com): " SUBDOMAIN
 validate_subdomain "$SUBDOMAIN"
 
@@ -199,6 +252,7 @@ NGINX_SITES_AVAILABLE="/etc/nginx/sites-available"
 NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
 NGINX_CONF_PATH="${NGINX_SITES_AVAILABLE}/${SAFE_NAME}.conf"
 
+show_step 2 $TOTAL_STEPS "Setting up project directory"
 # Create project directory
 if [[ -d "$PROJECT_DIR" ]]; then
   warn "Project directory already exists at $PROJECT_DIR"
@@ -207,20 +261,36 @@ else
   mkdir -p "$PROJECT_DIR"
   chown -R "${SUDO_USER:-root}":www-data "$PROJECT_DIR" || true
   chmod -R 755 "$PROJECT_DIR"
+  success "Project directory created successfully"
 fi
 
+show_step 3 $TOTAL_STEPS "Installing system packages"
 # Ensure basic tools installed: git, nginx, curl
 info "Checking and installing prerequisites (git, nginx, curl)..."
-apt-get update -y
+echo -n "Updating package list... "
+if apt-get update -y > /dev/null 2>&1; then
+  echo "✅"
+else
+  echo "❌"
+  fail "Failed to update package list" 1
+fi
+
 for pkg in git nginx curl; do
   if ! command -v "$pkg" >/dev/null 2>&1; then
-    info "Installing $pkg..."
-    apt-get install -y "$pkg"
+    echo -n "Installing $pkg... "
+    if apt-get install -y "$pkg" > /dev/null 2>&1; then
+      echo "✅"
+    else
+      echo "❌"
+      fail "Failed to install $pkg" 1
+    fi
   else
-    info "$pkg already installed."
+    echo "✅ $pkg already installed"
   fi
 done
+success "All required packages are ready"
 
+show_step 4 $TOTAL_STEPS "Setting up repository"
 # Ask about Git repo
 read -rp "Does the project repository exist remotely? (y/n): " REPO_EXISTS
 REPO_EXISTS=${REPO_EXISTS,,} # to lower
@@ -264,18 +334,21 @@ if [[ "$REPO_EXISTS" = "y" || "$REPO_EXISTS" = "yes" ]]; then
       echo "machine $host login $GIT_USER password $GIT_PAT" > "$NETRC_FILE" || true
     fi
 
-    info "Cloning private repo into $PROJECT_DIR (using temporary .netrc)..."
+    echo -n "Cloning private repository... "
     # run git with HOME pointed to a temp dir so .netrc is used
     HOME_TEMP="$(mktemp -d)"
     cp "$NETRC_FILE" "$HOME_TEMP/.netrc"
     chmod 600 "$HOME_TEMP/.netrc"
     # perform clone
     if git -c credential.helper= -c core.askPass= -C /tmp clone "$REPO_URL" "$PROJECT_DIR" --depth=1 2>/dev/null; then
-      info "Repository cloned successfully."
+      echo "✅"
     else
-      warn "Initial git clone attempt failed; trying with explicit HOME..."
-      if ! HOME="$HOME_TEMP" git clone "$REPO_URL" "$PROJECT_DIR" --depth=1; then
+      echo -n "Retrying with different method... "
+      if ! HOME="$HOME_TEMP" git clone "$REPO_URL" "$PROJECT_DIR" --depth=1 2>/dev/null; then
+        echo "❌"
         fail "Failed to clone private repository. Check your credentials and repository URL." 1
+      else
+        echo "✅"
       fi
     fi
 
@@ -284,23 +357,30 @@ if [[ "$REPO_EXISTS" = "y" || "$REPO_EXISTS" = "yes" ]]; then
     rm -rf "$HOME_TEMP"
   else
     # public repo
-    info "Cloning public repo into $PROJECT_DIR..."
-    if ! git clone "$REPO_URL" "$PROJECT_DIR" --depth=1; then
+    echo -n "Cloning public repository... "
+    if ! git clone "$REPO_URL" "$PROJECT_DIR" --depth=1 2>/dev/null; then
+      echo "❌"
       fail "Failed to clone public repository. Check the repository URL and internet connection." 1
+    else
+      echo "✅"
     fi
   fi
 
   # Set ownership and permissions
+  echo -n "Setting file permissions... "
   chown -R "${SUDO_USER:-root}":www-data "$PROJECT_DIR" || true
-  find "$PROJECT_DIR" -type d -exec chmod 755 {} \;
-  find "$PROJECT_DIR" -type f -exec chmod 644 {} \;
+  find "$PROJECT_DIR" -type d -exec chmod 755 {} \; 2>/dev/null
+  find "$PROJECT_DIR" -type f -exec chmod 644 {} \; 2>/dev/null
+  echo "✅"
+  success "Repository cloned and configured successfully"
 else
   info "Skipping git clone. Project directory left empty."
 fi
 
+show_step 5 $TOTAL_STEPS "Configuring web server"
 # Create basic index.html if no index exists
 if [[ ! -f "${PROJECT_DIR}/index.html" ]]; then
-  info "No index.html found; creating a simple index page for testing."
+  echo -n "Creating default index page... "
   cat > "${PROJECT_DIR}/index.html" <<EOF
 <!doctype html>
 <html>
@@ -311,11 +391,14 @@ if [[ ! -f "${PROJECT_DIR}/index.html" ]]; then
 </body>
 </html>
 EOF
-  chown "${SUDO_USER:-root}":www-data "${PROJECT_DIR}/index.html"
+  chown "${SUDO_USER:-root}":www-data "${PROJECT_DIR}/index.html" 2>/dev/null
+  echo "✅"
+else
+  echo "✅ Default index page already exists"
 fi
 
 # Generate Nginx server block
-info "Creating Nginx configuration for ${SUBDOMAIN}..."
+echo -n "Creating Nginx configuration... "
 if [[ -f "$NGINX_CONF_PATH" ]]; then
   warn "Nginx config already exists at $NGINX_CONF_PATH (will be overwritten)."
 fi
@@ -343,22 +426,33 @@ server {
     #}
 }
 NGCONF
+echo "✅"
 
 # Enable site
+echo -n "Enabling Nginx site... "
 if [[ ! -L "${NGINX_SITES_ENABLED}/${SAFE_NAME}.conf" ]]; then
   ln -sf "$NGINX_CONF_PATH" "${NGINX_SITES_ENABLED}/${SAFE_NAME}.conf"
 fi
+echo "✅"
 
-info "Testing Nginx configuration..."
-if ! nginx -t; then
+echo -n "Testing Nginx configuration... "
+if ! nginx -t > /dev/null 2>&1; then
+  echo "❌"
   fail "Nginx configuration test failed. Check the configuration syntax." 3
+else
+  echo "✅"
 fi
 
-info "Reloading Nginx..."
-if ! systemctl reload nginx; then
+echo -n "Reloading Nginx... "
+if ! systemctl reload nginx > /dev/null 2>&1; then
+  echo "❌"
   fail "Failed to reload Nginx. Check nginx status: systemctl status nginx" 3
+else
+  echo "✅"
 fi
+success "Web server configured successfully"
 
+show_step 6 $TOTAL_STEPS "Setting up SSL/HTTPS"
 # Ask about enabling HTTPS
 read -rp "Do you want to enable HTTPS with Let's Encrypt for ${SUBDOMAIN}? (y/n): " ENABLE_HTTPS
 ENABLE_HTTPS=${ENABLE_HTTPS,,}
@@ -370,32 +464,36 @@ fi
 
 CERTBOT_INSTALLED=false
 if [[ "$ENABLE_HTTPS" = "y" || "$ENABLE_HTTPS" = "yes" ]]; then
-  info "Preparing to install certbot (if needed) and request a certificate."
+  echo "Preparing to install certbot (if needed) and request a certificate..."
 
   # prefer python3-certbot-nginx if available; fallback to snap
   if command -v certbot >/dev/null 2>&1; then
-    info "certbot already installed."
+    echo "✅ certbot already installed"
     CERTBOT_INSTALLED=true
   else
-    info "Attempting to install certbot via apt (python3-certbot-nginx)..."
-    apt-get install -y software-properties-common
-    apt-get update -y || true
-    if apt-get install -y certbot python3-certbot-nginx; then
+    echo -n "Installing certbot via apt... "
+    apt-get install -y software-properties-common > /dev/null 2>&1
+    apt-get update -y > /dev/null 2>&1 || true
+    if apt-get install -y certbot python3-certbot-nginx > /dev/null 2>&1; then
+      echo "✅"
       CERTBOT_INSTALLED=true
     else
-      warn "apt install of certbot failed — trying snap method."
+      echo "❌"
+      echo -n "Trying snap method... "
       if command -v snap >/dev/null 2>&1; then
-        snap install core; snap refresh core
-        snap install --classic certbot
+        snap install core > /dev/null 2>&1; snap refresh core > /dev/null 2>&1
+        snap install --classic certbot > /dev/null 2>&1
         ln -sf /snap/bin/certbot /usr/bin/certbot
+        echo "✅"
         CERTBOT_INSTALLED=true
       else
-        warn "snap not installed; attempting to install snapd..."
-        apt-get install -y snapd
-        systemctl enable --now snapd.socket || true
-        snap install core; snap refresh core
-        snap install --classic certbot
+        echo -n "Installing snapd first... "
+        apt-get install -y snapd > /dev/null 2>&1
+        systemctl enable --now snapd.socket > /dev/null 2>&1 || true
+        snap install core > /dev/null 2>&1; snap refresh core > /dev/null 2>&1
+        snap install --classic certbot > /dev/null 2>&1
         ln -sf /snap/bin/certbot /usr/bin/certbot
+        echo "✅"
         CERTBOT_INSTALLED=true
       fi
     fi
@@ -414,44 +512,51 @@ if [[ "$ENABLE_HTTPS" = "y" || "$ENABLE_HTTPS" = "yes" ]]; then
       CERTBOT_EMAIL_ARG="--email $LE_EMAIL"
     fi
 
-    info "Running certbot to obtain & install certificate for ${SUBDOMAIN}..."
+    echo -n "Obtaining SSL certificate... "
     # Use non-interactive to auto agree tos; interactive may be needed in some cases
-    if certbot --nginx -d "$SUBDOMAIN" $CERTBOT_EMAIL_ARG --agree-tos --non-interactive --redirect; then
-      info "Certificate obtained and installed successfully."
+    if certbot --nginx -d "$SUBDOMAIN" $CERTBOT_EMAIL_ARG --agree-tos --non-interactive --redirect > /dev/null 2>&1; then
+      echo "✅"
+      success "SSL certificate obtained and installed successfully"
     else
+      echo "❌"
       warn "certbot failed. You may need to run: certbot --nginx -d ${SUBDOMAIN} and investigate errors."
       # Don't fail here, just warn - HTTPS is optional
     fi
   fi
 fi
 
-# Final verification
-info "Performing final verification..."
+show_step 7 $TOTAL_STEPS "Verifying deployment"
+echo "Performing final verification..."
 
 HTTP_OK=false
 HTTPS_OK=false
 
 # check HTTP
-if curl -sS --max-time 10 "http://${SUBDOMAIN}" -o /dev/null; then
-  info "HTTP check succeeded: http://${SUBDOMAIN} returned a response."
+echo -n "Testing HTTP connection... "
+if curl -sS --max-time 10 "http://${SUBDOMAIN}" -o /dev/null 2>&1; then
+  echo "✅"
   HTTP_OK=true
 else
+  echo "❌"
   warn "HTTP check failed for http://${SUBDOMAIN} (DNS may not be set or server not reachable)."
 fi
 
 # check HTTPS if enabled
 if [[ "$ENABLE_HTTPS" = "y" || "$ENABLE_HTTPS" = "yes" ]]; then
-  if curl -sS --max-time 10 -k "https://${SUBDOMAIN}" -o /dev/null; then
-    info "HTTPS check succeeded: https://${SUBDOMAIN} returned a response."
+  echo -n "Testing HTTPS connection... "
+  if curl -sS --max-time 10 -k "https://${SUBDOMAIN}" -o /dev/null 2>&1; then
+    echo "✅"
     HTTPS_OK=true
   else
+    echo "❌"
     warn "HTTPS check failed for https://${SUBDOMAIN}."
   fi
 fi
 
+show_step 8 $TOTAL_STEPS "Deployment complete"
 # Summary
 echo
-echo "==================== Deployment Summary ===================="
+echo "🎉 ==================== DEPLOYMENT SUMMARY ===================="
 echo "Subdomain: $SUBDOMAIN"
 echo "Project directory: $PROJECT_DIR"
 echo "Nginx config: $NGINX_CONF_PATH"
