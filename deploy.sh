@@ -50,6 +50,8 @@ if [[ ! -d "$PROJECT_DIR" ]]; then
     success "Project directory created successfully"
 fi
 
+validate_project_directory "$PROJECT_DIR"
+
 show_step 3 $TOTAL_STEPS "Installing system packages"
 install_packages
 
@@ -62,7 +64,6 @@ if [[ "$REPO_EXISTS" = "y" || "$REPO_EXISTS" = "yes" ]]; then
     read -rp "Is the repository public or private? (public/private): " REPO_TYPE
     REPO_TYPE=${REPO_TYPE,,}
     
-Validate repository type
     if [[ "$REPO_TYPE" != "public" && "$REPO_TYPE" != "private" ]]; then
         fail "❌ Invalid repository type. Please enter 'public' or 'private'" 2
     fi
@@ -70,7 +71,9 @@ Validate repository type
     read -rp "Enter the Git repository HTTPS URL (e.g. https://github.com/owner/repo.git): " REPO_URL
     validate_repo_url "$REPO_URL"
     
-    setup_repository "$REPO_TYPE" "$REPO_URL" "$PROJECT_DIR"
+    if ! setup_repository "$REPO_TYPE" "$REPO_URL" "$PROJECT_DIR"; then
+        fail "❌ Repository setup failed. Please check your repository URL and credentials." 1
+    fi
 else
     info "Skipping git clone. Project directory left empty."
 fi

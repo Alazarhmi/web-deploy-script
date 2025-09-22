@@ -99,3 +99,17 @@ validate_yes_no_input() {
         fail "❌ Invalid input for $field_name. Please enter 'y' for yes or 'n' for no" 2
     fi
 }
+
+validate_project_directory() {
+    local project_dir=$1
+    
+    if [[ ! -d "$project_dir" ]]; then
+        fail "❌ Project directory creation failed: $project_dir" 5
+    fi
+    
+    if [[ ! -w "$project_dir" ]]; then
+        fail "❌ Project directory is not writable: $project_dir" 5
+    fi
+    
+    info "✅ Project directory is valid and writable"
+}

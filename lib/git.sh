@@ -47,6 +47,29 @@ clone_public_repository() {
     fi
 }
 
+setup_git_credentials() {
+    local git_user=$1
+    local git_pat=$2
+    local host=$3
+    
+    local credential_file=$(mktemp)
+    if [[ -n "$git_user" ]]; then
+        echo "https://${git_user}:${git_pat}@${host}" > "$credential_file"
+    else
+        echo "https://oauth2:${git_pat}@${host}" > "$credential_file"
+    fi
+    
+    chmod 600 "$credential_file"
+    echo "$credential_file"
+}
+
+cleanup_git_credentials() {
+    local credential_file=$1
+    if [[ -n "$credential_file" && -f "$credential_file" ]]; then
+        rm -f "$credential_file"
+    fi
+}
+
 clone_private_repository() {
     local repo_url=$1
     local project_dir=$2
@@ -61,18 +84,16 @@ clone_private_repository() {
         fail "Could not parse host from repository URL." 2
     fi
 
-    echo -n "Testing private repository access... "
-    local auth_url
-    if [[ -n "$GIT_USER" ]]; then
-        auth_url="https://${GIT_USER}:${GIT_PAT}@${host}${repo_url#https://$host}"
-    else
-        auth_url="https://oauth2:${GIT_PAT}@${host}${repo_url#https://$host}"
-    fi
+    local credential_file=$(setup_git_credentials "$GIT_USER" "$GIT_PAT" "$host")
     
-    if git ls-remote "$auth_url" > /dev/null 2>&1; then
+    trap "cleanup_git_credentials '$credential_file'" EXIT
+
+    echo -n "Testing private repository access... "
+    if GIT_ASKPASS="cat" git -c credential.helper="store --file=$credential_file" ls-remote "$repo_url" > /dev/null 2>&1; then
         echo "✅"
     else
         echo "❌"
+        cleanup_git_credentials "$credential_file"
         echo
         echo "🔧 Troubleshooting private repository access:"
         echo "   • Verify your Personal Access Token is correct"
@@ -85,35 +106,14 @@ clone_private_repository() {
     fi
     
     echo -n "Cloning private repository... "
-
-    if git clone "$auth_url" "$project_dir" --depth=1 2>/dev/null; then
-        echo "✅"
-        return 0
-    fi
-
-    echo -n "Trying alternative method... "
-    local netrc_file=$(mktemp)
-    local home_temp=$(mktemp -d)
-
-    if [[ -n "$GIT_USER" ]]; then
-        echo "machine $host login $GIT_USER password $GIT_PAT" > "$netrc_file"
-    else
-        echo "machine $host login oauth2 password $GIT_PAT" > "$netrc_file"
-    fi
     
-    chmod 600 "$netrc_file"
-    cp "$netrc_file" "$home_temp/.netrc"
-    chmod 600 "$home_temp/.netrc"
-
-    if HOME="$home_temp" git clone "$repo_url" "$project_dir" --depth=1 2>/dev/null; then
+    if GIT_ASKPASS="cat" git -c credential.helper="store --file=$credential_file" clone "$repo_url" "$project_dir" --depth=1 2>/dev/null; then
         echo "✅"
-        rm -f "$netrc_file"
-        rm -rf "$home_temp"
+        cleanup_git_credentials "$credential_file"
         return 0
     fi
 
-    rm -f "$netrc_file"
-    rm -rf "$home_temp"
+    cleanup_git_credentials "$credential_file"
     echo "❌"
     
     echo
@@ -127,15 +127,35 @@ clone_private_repository() {
     fail "Failed to clone private repository. Please check your credentials and try again." 1
 }
 
+cleanup_failed_clone() {
+    local project_dir=$1
+    
+    if [[ -d "$project_dir" ]]; then
+        echo -n "Cleaning up failed clone attempt... "
+        rm -rf "$project_dir" 2>/dev/null
+        echo "✅"
+    fi
+}
+
 setup_repository() {
     local repo_type=$1
     local repo_url=$2
     local project_dir=$3
     
+    if [[ ! -d "$project_dir" ]]; then
+        mkdir -p "$project_dir"
+    fi
+    
     if [[ "$repo_type" = "private" ]]; then
-        clone_private_repository "$repo_url" "$project_dir"
+        if ! clone_private_repository "$repo_url" "$project_dir"; then
+            cleanup_failed_clone "$project_dir"
+            return 1
+        fi
     else
-        clone_public_repository "$repo_url" "$project_dir"
+        if ! clone_public_repository "$repo_url" "$project_dir"; then
+            cleanup_failed_clone "$project_dir"
+            return 1
+        fi
     fi
 
     echo -n "Setting file permissions... "

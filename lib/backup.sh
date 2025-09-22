@@ -6,7 +6,8 @@ create_backup() {
     local backup_type=$2
     
     if [[ -f "$file_path" ]]; then
-        local backup_dir="/var/backups/deploy-$(date +%Y%m%d-%H%M%S)"
+        local timestamp=$(date +%Y%m%d-%H%M%S-%N | cut -c1-23)
+        local backup_dir="/var/backups/deploy-${timestamp}"
         local filename=$(basename "$file_path")
         local backup_file="$backup_dir/$filename"
         
@@ -64,7 +65,8 @@ backup_project_directory() {
         done
         
         if [[ "$BACKUP_PROJECT" = "y" || "$BACKUP_PROJECT" = "yes" ]]; then
-            local backup_dir="/var/backups/project-$(date +%Y%m%d-%H%M%S)"
+            local timestamp=$(date +%Y%m%d-%H%M%S-%N | cut -c1-23)
+            local backup_dir="/var/backups/project-${timestamp}"
             local project_name=$(basename "$project_dir")
             local backup_path="$backup_dir/$project_name"
             
@@ -94,7 +96,8 @@ backup_ssl_certificate() {
         done
         
         if [[ "$BACKUP_SSL" = "y" || "$BACKUP_SSL" = "yes" ]]; then
-            local backup_dir="/var/backups/ssl-$(date +%Y%m%d-%H%M%S)"
+            local timestamp=$(date +%Y%m%d-%H%M%S-%N | cut -c1-23)
+            local backup_dir="/var/backups/ssl-${timestamp}"
             echo -n "Creating SSL certificate backup... "
             mkdir -p "$backup_dir"
             cp -r "/etc/letsencrypt/live/$subdomain" "$backup_dir/" 2>/dev/null
