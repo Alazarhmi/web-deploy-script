@@ -32,11 +32,20 @@ ask_backup() {
     if [[ -f "$file_path" ]]; then
         echo
         warn "⚠️  Existing $file_type found at: $file_path"
-        read -p "Do you want to create a backup before overwriting? (y/n): " CREATE_BACKUP
+        echo -n "Do you want to create a backup before overwriting? (y/n): "
+        read CREATE_BACKUP
         
+        # Validate input with timeout
+        local attempts=0
         while [[ "$CREATE_BACKUP" != "y" && "$CREATE_BACKUP" != "yes" && "$CREATE_BACKUP" != "n" && "$CREATE_BACKUP" != "no" ]]; do
+            ((attempts++))
+            if [[ $attempts -gt 3 ]]; then
+                echo "❌ Too many invalid attempts. Skipping backup."
+                return 1
+            fi
             echo "❌ Invalid input. Please enter 'y' for yes or 'n' for no"
-            read -p "Do you want to create a backup before overwriting? (y/n): " CREATE_BACKUP
+            echo -n "Do you want to create a backup before overwriting? (y/n): "
+            read CREATE_BACKUP
         done
         
         if [[ "$CREATE_BACKUP" = "y" || "$CREATE_BACKUP" = "yes" ]]; then

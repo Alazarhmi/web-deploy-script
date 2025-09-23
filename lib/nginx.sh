@@ -10,7 +10,7 @@ install_packages() {
         fail "Failed to update package list" 1
     fi
 
-    for pkg in git nginx curl; do
+    for pkg in git nginx curl dnsutils; do
         if ! command -v "$pkg" > /dev/null 2>&1; then
             echo -n "Installing $pkg... "
             if apt-get install -y "$pkg" > /dev/null 2>&1; then
@@ -33,9 +33,15 @@ create_nginx_config() {
     local safe_name=$4
     
     echo -n "Creating Nginx configuration... "
-    ask_backup "$nginx_conf_path" "Nginx configuration"
+    
+    # Ask for backup if file exists
+    if [[ -f "$nginx_conf_path" ]]; then
+        echo " (existing config found)"
+        ask_backup "$nginx_conf_path" "Nginx configuration" || true
+    fi
 
-    cat > "$nginx_conf_path" <<NGCONF
+    # Create the nginx configuration
+    if cat > "$nginx_conf_path" <<NGCONF
 server {
     listen 80;
     listen [::]:80;
@@ -58,7 +64,12 @@ server {
     #}
 }
 NGCONF
-    echo "✅"
+    then
+        echo "✅"
+    else
+        echo "❌"
+        fail "Failed to create nginx configuration file" 3
+    fi
 }
 
 enable_nginx_site() {

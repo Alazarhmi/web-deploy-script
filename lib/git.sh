@@ -47,36 +47,13 @@ clone_public_repository() {
     fi
 }
 
-setup_git_credentials() {
-    local git_user=$1
-    local git_pat=$2
-    local host=$3
-    
-    local credential_file=$(mktemp)
-    if [[ -n "$git_user" ]]; then
-        echo "https://${git_user}:${git_pat}@${host}" > "$credential_file"
-    else
-        echo "https://oauth2:${git_pat}@${host}" > "$credential_file"
-    fi
-    
-    chmod 600 "$credential_file"
-    echo "$credential_file"
-}
-
-cleanup_git_credentials() {
-    local credential_file=$1
-    if [[ -n "$credential_file" && -f "$credential_file" ]]; then
-        rm -f "$credential_file"
-    fi
-}
 
 clone_private_repository() {
     local repo_url=$1
     local project_dir=$2
     
     read -rp "Enter git username for PAT (e.g. GitHub username) [press Enter to skip]: " GIT_USER
-    read -rsp "Enter Personal Access Token (PAT) (input is hidden): " GIT_PAT
-    echo
+    read -rp "Enter Personal Access Token (PAT): " GIT_PAT
     validate_git_credentials "$GIT_USER" "$GIT_PAT"
 
     local host=$(echo "$repo_url" | sed -E 's#https?://([^/]+)/.*#\1#')
@@ -84,16 +61,25 @@ clone_private_repository() {
         fail "Could not parse host from repository URL." 2
     fi
 
-    local credential_file=$(setup_git_credentials "$GIT_USER" "$GIT_PAT" "$host")
+    # Create authenticated URL
+    local auth_url
+    if [[ -n "$GIT_USER" ]]; then
+        auth_url="https://${GIT_USER}:${GIT_PAT}@${host}${repo_url#https://$host}"
+    else
+        auth_url="https://oauth2:${GIT_PAT}@${host}${repo_url#https://$host}"
+    fi
     
-    trap "cleanup_git_credentials '$credential_file'" EXIT
-
     echo -n "Testing private repository access... "
-    if GIT_ASKPASS="cat" git -c credential.helper="store --file=$credential_file" ls-remote "$repo_url" > /dev/null 2>&1; then
+    if git ls-remote "$auth_url" > /dev/null 2>&1; then
         echo "✅"
     else
         echo "❌"
-        cleanup_git_credentials "$credential_file"
+        echo
+        echo "🔧 Debug information:"
+        echo "   • Repository URL: $repo_url"
+        echo "   • Host: $host"
+        echo "   • Username: ${GIT_USER:-'oauth2'}"
+        echo "   • Token length: ${#GIT_PAT} characters"
         echo
         echo "🔧 Troubleshooting private repository access:"
         echo "   • Verify your Personal Access Token is correct"
@@ -102,18 +88,19 @@ clone_private_repository() {
         echo "   • Try creating a new token with full repository access"
         echo "   • For GitHub: Check token permissions in Settings > Developer settings"
         echo
+        echo "💡 Try testing manually:"
+        echo "   git ls-remote $auth_url"
+        echo
         fail "Cannot access private repository. Please check your credentials and try again." 1
     fi
     
     echo -n "Cloning private repository... "
     
-    if GIT_ASKPASS="cat" git -c credential.helper="store --file=$credential_file" clone "$repo_url" "$project_dir" --depth=1 2>/dev/null; then
+    if git clone "$auth_url" "$project_dir" --depth=1 2>/dev/null; then
         echo "✅"
-        cleanup_git_credentials "$credential_file"
         return 0
     fi
 
-    cleanup_git_credentials "$credential_file"
     echo "❌"
     
     echo
