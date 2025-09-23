@@ -37,7 +37,7 @@ SAFE_NAME=$(echo "$SUBDOMAIN" | tr '/' '_')
 PROJECT_DIR="/var/www/${SAFE_NAME}"
 NGINX_SITES_AVAILABLE="/etc/nginx/sites-available"
 NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
-NGINX_CONF_PATH="${NGINX_SITES_AVAILABLE}/${SAFE_NAME}.conf"
+NGINX_CONF_PATH="${NGINX_SITES_AVAILABLE}/${SAFE_NAME}"
 
 show_step 2 $TOTAL_STEPS "Setting up project directory"
 backup_project_directory "$PROJECT_DIR"

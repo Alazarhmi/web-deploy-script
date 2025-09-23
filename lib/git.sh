@@ -129,9 +129,17 @@ setup_repository() {
     local repo_url=$2
     local project_dir=$3
     
-    if [[ ! -d "$project_dir" ]]; then
-        mkdir -p "$project_dir"
+    # Remove existing directory if it exists (from failed deployments)
+    if [[ -d "$project_dir" ]]; then
+        echo -n "Removing existing project directory... "
+        rm -rf "$project_dir" 2>/dev/null
+        echo "✅"
     fi
+    
+    # Create fresh project directory
+    echo -n "Creating project directory... "
+    mkdir -p "$project_dir"
+    echo "✅"
     
     if [[ "$repo_type" = "private" ]]; then
         if ! clone_private_repository "$repo_url" "$project_dir"; then

@@ -73,8 +73,8 @@ check_ssl_prerequisites() {
     fi
     
     local safe_name=$(echo "$subdomain" | tr '/' '_')
-    local nginx_conf="/etc/nginx/sites-available/${safe_name}.conf"
-    local nginx_enabled="/etc/nginx/sites-enabled/${safe_name}.conf"
+    local nginx_conf="/etc/nginx/sites-available/${safe_name}"
+    local nginx_enabled="/etc/nginx/sites-enabled/${safe_name}"
     
     echo -n "   • Checking nginx configuration... "
     if [[ -f "$nginx_conf" ]]; then
@@ -126,7 +126,7 @@ setup_ssl_certificate() {
         warn "Empty email — certbot will be run without --email (not recommended)."
         certbot_email_arg="--register-unsafely-without-email"
     else
-        certbot_email_arg="--email $le_email"
+        certbot_email_arg="--email=$le_email"
     fi
     
     echo -n "Obtaining SSL certificate... "

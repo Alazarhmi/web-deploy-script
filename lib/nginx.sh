@@ -78,8 +78,8 @@ enable_nginx_site() {
     local safe_name=$3
     
     echo -n "Enabling Nginx site... "
-    if [[ ! -L "${nginx_sites_enabled}/${safe_name}.conf" ]]; then
-        ln -sf "$nginx_conf_path" "${nginx_sites_enabled}/${safe_name}.conf"
+    if [[ ! -L "${nginx_sites_enabled}/${safe_name}" ]]; then
+        ln -sf "$nginx_conf_path" "${nginx_sites_enabled}/${safe_name}"
     fi
     echo "✅"
 }

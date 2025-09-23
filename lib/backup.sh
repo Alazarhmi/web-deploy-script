@@ -66,28 +66,47 @@ backup_project_directory() {
     if [[ -d "$project_dir" ]]; then
         warn "Project directory already exists at $project_dir"
         echo
-        read -p "Do you want to backup the existing project directory before proceeding? (y/n): " BACKUP_PROJECT
+        echo "What would you like to do with the existing project directory?"
+        echo "  1. Backup and keep the old version"
+        echo "  2. Remove the old version (recommended for failed deployments)"
+        echo "  3. Cancel deployment"
+        echo
+        read -p "Enter your choice (1/2/3): " BACKUP_CHOICE
         
-        while [[ "$BACKUP_PROJECT" != "y" && "$BACKUP_PROJECT" != "yes" && "$BACKUP_PROJECT" != "n" && "$BACKUP_PROJECT" != "no" ]]; do
-            echo "❌ Invalid input. Please enter 'y' for yes or 'n' for no"
-            read -p "Do you want to backup the existing project directory before proceeding? (y/n): " BACKUP_PROJECT
+        while [[ "$BACKUP_CHOICE" != "1" && "$BACKUP_CHOICE" != "2" && "$BACKUP_CHOICE" != "3" ]]; do
+            echo "❌ Invalid input. Please enter 1, 2, or 3"
+            read -p "Enter your choice (1/2/3): " BACKUP_CHOICE
         done
         
-        if [[ "$BACKUP_PROJECT" = "y" || "$BACKUP_PROJECT" = "yes" ]]; then
-            local timestamp=$(date +%Y%m%d-%H%M%S-%N | cut -c1-23)
-            local backup_dir="/var/backups/project-${timestamp}"
-            local project_name=$(basename "$project_dir")
-            local backup_path="$backup_dir/$project_name"
-            
-            echo -n "Creating project backup... "
-            mkdir -p "$backup_dir"
-            cp -r "$project_dir" "$backup_path" 2>/dev/null
-            chmod -R 755 "$backup_path" 2>/dev/null
-            echo "✅"
-            echo "✅ Project backed up to: $backup_path"
-        else
-            echo "ℹ️  Skipping project backup"
-        fi
+        case "$BACKUP_CHOICE" in
+            1)
+                # Backup and keep
+                local timestamp=$(date +%Y%m%d-%H%M%S-%N | cut -c1-23)
+                local backup_dir="/var/backups/project-${timestamp}"
+                local project_name=$(basename "$project_dir")
+                local backup_path="$backup_dir/$project_name"
+                
+                echo -n "Creating project backup... "
+                mkdir -p "$backup_dir"
+                cp -r "$project_dir" "$backup_path" 2>/dev/null
+                chmod -R 755 "$backup_path" 2>/dev/null
+                echo "✅"
+                echo "✅ Project backed up to: $backup_path"
+                echo "ℹ️  Old project directory will be removed before cloning new version"
+                ;;
+            2)
+                # Remove old version
+                echo -n "Removing old project directory... "
+                rm -rf "$project_dir" 2>/dev/null
+                echo "✅"
+                echo "✅ Old project directory removed"
+                ;;
+            3)
+                # Cancel deployment
+                echo "❌ Deployment cancelled by user"
+                exit 0
+                ;;
+        esac
     fi
 }
 
